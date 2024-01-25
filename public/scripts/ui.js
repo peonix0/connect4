@@ -4,17 +4,43 @@ import { aiMove } from "./ai.js"
 const defaultColor = "rgb(128,128,128)"  //gray
 const playColors = ["rgb(36, 238, 181)", "rgb(211, 36, 238)"]
 
-document.addEventListener('DOMContentLoaded', () => {
-    const startBtn = document.getElementById('startbtn');
-    if (startBtn) {
-        startBtn.addEventListener('click', init);
+/* flags */
+let game_started = false;
+
+document.addEventListener('keydown', function(event) {
+    if (event.ctrlKey && event.key === 'c') {
+        $('#board').css("display", "none")
+        $('.window-setting').css("display", "block")
     }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    $('#startBtn').on('click', function(event) {
+        $('#configure-btn').val("Restart")
+        game_started = true;
+        init()
+    })
+    $('#configure-btn').on('click', function(event) {
+        $('.window-setting').css("display", "none")
+        $('#board').css("display", "initial")
+        if (game_started) {
+            init();
+        }
+        alert("New configurations in action!")
+    })
 });
 
 function init() {
 
-    const player1 = new Player($('#p1name').text(), playColors[0], CELL.P1, false, 1, 3)
-    const player2 = new Player($('#p2name').text(), playColors[1], CELL.P2, true, 1, 5)
+    let p1aiflag = $('#p1ai').is(":checked")
+    let p2aiflag = $('#p2ai').is(":checked")
+    let p1depth = $('#p1d').value
+    let p2depth = $('#p2d').value
+
+    const p1name = $('#p1name').text();
+    const p2name = $('#p2name').text();
+    const player1 = new Player(p1name, playColors[0], CELL.P1, p1aiflag, 1, 3)
+    const player2 = new Player(p2name, playColors[1], CELL.P2, p2aiflag, 1, 5)
 
 
     const col = parseInt($('#ncol').text())
