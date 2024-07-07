@@ -5,18 +5,50 @@ const status = {
 }
 
 function doMatchMaking(player1, playerPool) {
-  if (playerPool.getCountInQueuePlayers() < 2)
-    return { opid: null, errorMsg: "Unsufficient player count" }
+  let player2, intervalId
 
-  playerPool.removePlayerWithID(player1.pid)
-  let player2 = playerPool.queuePopPlayer()
+  if (playerPool.getCountInQueuePlayers() < 2)
+    return { opid: null, error: { status: 101, msg: "Insufficient player count" } }
+
+  playerPool.queueRemovePlayerWithPID(player1.pid)
+  player2 = playerPool.queuePopPlayer()
 
   playerPool.addNewPlayerInGame(player1)
   playerPool.addNewPlayerInGame(player2)
 
   player1.opponent = player2
   player2.opponent = player1
-  return { opid: player2.pid, errorMsg: null }
+
+  player1.state = 'INGAME' //TODO: import state
+  player2.state = 'INGAME'
+  intervalId = setInterval(() => {
+    if (player1.timer >= 0) {
+      player1.timer--;
+    }
+    if (player2.timer >= 0) {
+      player2.timer--;
+    }
+
+    if (player1.timer < 0 && player1.state !== 'DEAD') {
+      player1.state = 'DEAD'
+    }
+    if (player2.timer < 0 && player2.state !== 'DEAD') {
+      player2.state = 'DEAD'
+    }
+
+    if (player1.timer < 0 && player2.timer < 0) {
+      console.log(`[removed(${player1.timer})]: ${player1.pid}`)
+      playerPool.gameRemovePlayerWithPID(player1.pid)
+
+      console.log(`[removed(${player2.timer})]: ${player2.pid}`)
+      playerPool.gameRemovePlayerWithPID(player2.pid)
+
+      clearInterval(intervalId)
+    }
+
+  }, 1000)
+
+  return { opid: player2.pid, error: { status: 200, msg: null } }
 }
 
 
@@ -32,7 +64,7 @@ class Arena {
     //TODO: INIT board
     //TODO: Randomize currentPlayer
   }
-  
+
   addMove(col, row) {
     let trow = 0
     for (let i = 0; i < trow; i++) {

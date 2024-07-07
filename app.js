@@ -17,10 +17,18 @@ class Player {
   constructor() {
     this.pid = this._generatePID()
     this.opponent = null
+
+    // not using
     this.name = null
     this.state = playerState.INQUEUE
-    this.lastMove = null
+
+    // this keeps the opponent move until requested by player
     this.socket = null
+
+    /* if player doesn't interact with server for 60 secs, server will assume
+     * player as dead (disconnected) 
+     */
+    this.timer = 30  // 60secs
   }
 
   _generatePID() {
@@ -29,6 +37,14 @@ class Player {
 
   setPlayerState(state) {
     this.state = state
+  }
+
+  resetTimer() {
+    this.timer = 30
+  }
+  
+  setExpire(){
+    this.timer = -1
   }
 }
 
@@ -50,13 +66,12 @@ class PlayerPool {
     return this.inGamePlayers.length + this.inQueuePlayers.length
   }
 
-  getPlayerWithID(pid) {
+  getPlayerWithPID(pid) {
     return this.inGamePlayers.find(player => player.pid === pid) || this.inQueuePlayers.find(player => player.pid === pid)
   }
 
-  removePlayerWithID(pid) {
+  gameRemovePlayerWithPID(pid) {
     this.inGamePlayers = this.inGamePlayers.filter(player => player.pid !== pid)
-    this.inQueuePlayers = this.inQueuePlayers.filter(player => player.pid !== pid)
   }
 
   queuePopPlayer() {
@@ -69,6 +84,7 @@ class PlayerPool {
 
   addNewPlayer(player) {
     this.inQueuePlayers.push(player)
+    console.log(`[added(${this.getCountInQueuePlayers()})]: ${player.pid}`)
   }
 
   addNewPlayerInGame(player) {
@@ -82,7 +98,7 @@ async function gogoReadPost(req) {
     return { data: undefined, errorMsg: "invalid method" }
 
   let data = ''
-  return await new Promise((resolve, reject) => {
+  return await new Promise((resolve) => {
     req.on('data', chunk => {
       data += chunk.toString();
     })
@@ -91,15 +107,15 @@ async function gogoReadPost(req) {
       const parsedData = JSON.parse(data);
       console.log("[Recieved]:", parsedData)
       if (parsedData !== undefined)
-        resolve({ data: parsedData, errorMsg: null })
+        resolve({ data: parsedData, error: { status: 200, msg: null } })
       else
-        resolve({ data: null, errorMsg: "invalid data" })
+        resolve({ data: null, error: { status: 404, msg: 'Invalid request data' } })
     })
   })
 }
 
 // Assuming POST data in JSON
-async function gogoReadPostGetPid(req) {
+async function gogoReadPostGetPID(req) {
   if (req.method !== 'POST')
     return { data: undefined, errorMsg: "invalid method" }
 
@@ -112,9 +128,9 @@ async function gogoReadPostGetPid(req) {
     req.on('end', () => {
       const parsedData = JSON.parse(data);
       if (parsedData.pid !== undefined)
-        resolve({ pid: parsedData.pid, errorMsg: null })
+        resolve({ pid: parsedData.pid, error: { status: 200, msg: null } })
       else
-        resolve({ pid: null, errorMsg: "invalid data" })
+        resolve({ pid: null, error: { status: 404, msg: 'Invalid request data' } })
     })
   })
 }
@@ -122,6 +138,7 @@ async function gogoReadPostGetPid(req) {
 async function gogohandler(req, res) {
   console.log(`{${req.method}, ${req.url}}`)
   const parsedUrl = url.parse(req.url, true)
+  let error = { status: null, msg: null }
 
   if (parsedUrl.pathname === '/playerCount' && req.method === 'GET') {
     const data = {
@@ -133,93 +150,121 @@ async function gogohandler(req, res) {
     res.end(JSON.stringify(data))
   }
   else if (parsedUrl.pathname === '/register' && req.method === 'GET') {
-    // this add player to queue and returns player card
     let player = new Player()
+
     playerPool.addNewPlayer(player)
-    // return PID as json
     res.setHeader('Content-Type', 'application/json')
-    console.log(`[added]: ${player.pid}`)
     res.end(JSON.stringify({ pid: player.pid }))
   }
   else if (parsedUrl.pathname === '/getArena' && req.method === 'POST') {
-    let pid, opid, errorMsg
-    ({ pid, errorMsg } = await gogoReadPostGetPid(req))
+    let pid, opid
+
+    ({ pid, error } = await gogoReadPostGetPID(req))
 
     if (pid !== undefined) {
-      let player = playerPool.getPlayerWithID(pid)
+      let player = playerPool.getPlayerWithPID(pid)
 
       if (player === undefined) {
-        errorMsg = `PID ${pid} not registered`
+        error = { status: 400, msg: `PID ${pid} not registered` }
       }
       else if (player.opponent) {
         opid = player.opponent.pid
       }
       else if (playerPool.getCountInQueuePlayers < 2) {
-        errorMsg = "Unsufficient player count"
+        error = { status: 333, msg: "Insufficient player count" }
       }
       else {
-        ({ opid, errorMsg } = doMatchMaking(player, playerPool))
-        let arena
-        // ({ arena, opid, errorMsg } = arena.createArena(player))
-
-        if (errorMsg) {
-          //TODO: set error
-        }
+        ({ opid, error } = doMatchMaking(player, playerPool))
       }
     }
 
-    if (errorMsg) {
-      console.log(errorMsg)
-      res.statusCode = 400
-      // TODO: write error msg
-      res.end()
-    }
-    else {
+    if (!error.msg) {
       res.statusCode = 200
       res.end((JSON.stringify({ Ypid: pid, Opid: opid })))
     }
   }
-  else if(parsedUrl.pathname === '/addMove' && req.method === 'POST'){
-    let {data, errorMsg} = await gogoReadPost(req)
-    let pid = data.pid
-    let move = data.move
-    let player = playerPool.getPlayerWithID(pid)
+  else if (parsedUrl.pathname === '/addMove' && req.method === 'POST') {
+    let player, data
 
-    player.opponent.socket = data.move
-    res.statusCode = 200
-    res.end()
+    ({ data, error } = await gogoReadPost(req))
+    if (data.pid !== undefined) {
+      player = playerPool.getPlayerWithPID(data.pid)
+
+      if (player !== undefined) {
+        player.resetTimer()
+
+        if (player.opponent && player.opponent.state !== playerState.DEAD) {
+          player.opponent.socket = data.move
+          res.statusCode = 200
+          res.end()
+        } else {
+          player.setExpire()
+          error = { status: 400, msg: 'Opponent disconnected' }
+        }
+      } else {
+        error = { status: 400, msg: `PID ${data.pid} not registered` }
+      }
+    }
   }
-  else if(parsedUrl.pathname === '/getUpdatedMove' && req.method === 'POST'){
-    let {data, errormsg} = await gogoReadPost(req)
-    let pid = data.pid
-    let player = playerPool.getPlayerWithID(pid)
+  else if (parsedUrl.pathname === '/getUpdatedMove' && req.method === 'POST') {
+    let data
+    ({ data, error } = await gogoReadPost(req))
 
-    if(player.socket){
-      res.statusCode = 200
-      res.end(JSON.stringify(player.socket))
-      player.socket = null
-    }else{
-      res.statusCode = 300
-      res.end()
+    if (data.pid !== undefined) {
+      let player = playerPool.getPlayerWithPID(data.pid)
+
+      if (player === undefined) {
+        error = { status: 400, msg: `PID ${data.pid} not registered` }
+      }
+      else if (player.opponent.state === playerState.DEAD) {
+        player.setExpire()
+        error = { status: 400, msg: 'Opponent disconnected' }
+      }
+      else if (player.socket) {
+        player.resetTimer()
+        res.statusCode = 200
+        res.end(JSON.stringify(player.socket))
+        player.socket = null
+      } else {
+        player.resetTimer()
+        error = { status: 333, msg: 'Wait...' }
+      }
+    }
+
+  }
+  else if (parsedUrl.pathname === '/keepMeAlive' && req.method === 'POST') {
+    let data
+    ({ data, error } = await gogoReadPost(req))
+
+    if (!error.msg && data.pid !== undefined) {
+      let player = playerPool.getPlayerWithPID(data.pid)
+
+      if (player !== undefined) {
+        player.resetTimer()
+        res.statusCode = 200
+        res.end()
+      } else {
+        error = { status: 400, msg: `PID ${data.pid} not registered` }
+      }
     }
   }
   else if (req.method === 'GET') {
     // requestin our main page, server static content
     gogoServeStatic(parsedUrl.pathname, res)
   }
-  else {
-    res.statusCode = 404
-    res.statusMessage = "Invalid Request"
-    res.end("{Error: 404}")
-  }
 
+  if (error.msg) {
+    console.log(error)
+    res.statusCode = error.status || 404
+    res.end(JSON.stringify(error))
+  }
 }
 
 // Create PlayerPool
 const playerPool = new PlayerPool()
 
 const server = http.createServer(gogohandler)
-server.listen(port,'192.168.43.198', () => {
+server.listen(port, () => {
   console.log(`Server running at http://localhost:${port}/`)
 })
 

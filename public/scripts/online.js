@@ -19,7 +19,11 @@ export const online = {
         if (response.ok) {
             this.lpid = await response.json().then(data => data.pid);
             console.log('registration successful, pid:', this.lpid)
+            
+            // Activate KeepMeAlive updates
+            this._sendKeepAliveUpdates()
             return this.lpid
+            
         }
     },
 
@@ -53,11 +57,28 @@ export const online = {
             body: JSON.stringify({ pid: this.lpid }),
         })
 
-        if (response.ok) {
+        if (response.status === 200) {
             move = await response.json()
             console.log("recieved opponent move:", move)
         }
         return move
+    },
+
+    _sendKeepAliveUpdates(){
+        let intervalId = setInterval(()=>{fetch(`${url}/keepMeAlive`, {
+            headers: {
+                "Content-Type": "application/json",
+            },
+            method: "POST",
+            body: JSON.stringify({ pid: this.lpid }),
+        }).then(response=> {
+            if(!response.ok){
+                //TODO:
+                console.log("[server not recognizing pid]")
+                clearInterval(intervalId)
+                return "some error"
+            }
+        })}, 40000)
     },
 
     async getUpdatedMove() {
@@ -88,3 +109,4 @@ export const online = {
         this.lock = false
     }
 }
+
