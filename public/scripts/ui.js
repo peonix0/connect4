@@ -1,11 +1,15 @@
 import { Player, Game, Board, CELL, STATUS } from "./game.js"
 import { aiMove } from "./ai.js"
+import { online } from "./online.js"
 
 const defaultColor = "rgb(128,128,128)"  //gray
 const playColors = ["rgb(36, 238, 181)", "rgb(211, 36, 238)"]
 
 /* flags */
 let game_started = false;
+
+/* options */
+let multiplayer = true;
 
 document.addEventListener('keydown', function(event) {
     if (event.ctrlKey && event.key === 'c') {
@@ -15,7 +19,14 @@ document.addEventListener('keydown', function(event) {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-    $('#startBtn').on('click', function(event) {
+    $('#startBtn').on('click', async function(event) {
+
+        if (multiplayer) {
+            // sent request to server
+            await online.registerPlayer()
+            await online.getArena()
+
+        }
         $('#configure-btn').val("Restart")
         game_started = true;
         init()
@@ -134,11 +145,13 @@ function updateGameUi(game) {
     }
 }
 
+// Puts move in action and shows an animation
 async function playMove(board, player, row, col) {
     const cellColor = player.color;
     console.log("row,col: ", row, col);
     console.log(board.cells);
 
+    // TODO: if player type is AI, ONLINE then set row to max
     if (board.getBoardCell(row, col) !== CELL.EMPTY) {
         return 0;
     }
@@ -171,23 +184,40 @@ async function makePlayerMove(target, game) {
         return
     }
 
+    // ({ row, col } = aiMove(board, player));
+    // console.log("ai move", row, col)
+    // }
+    // else if (player.type === 'online'){
+
+
     game.allowMove = false;
     while (board.status === STATUS.INPROGRESS) {
         const player = game.currentPlayer
         let row, col;
         if (player.ai.enabled) {
-            /* find row, col */
-            ({ row, col } = aiMove(board, player));
-            console.log("ai move", row, col)
-        } else {
+            let move
+            /* TODO: find row, col  and may be set row to max for animation */
+            ({row, col} = await online.getUpdatedMove())  // should have to wait here
+            if (move) {
+                row = move.row
+                col = move.col
+            }
+            console.log("online player move", row, col)
+        }
+        else {
             const index = parseInt(target.id);
             ({ row, col } = board.getRowColFromIndex(index));
+            // TODO: Send this move to server here
+            await online.sendMove(row, col)
         }
 
+        console.log("Playe move")
         const result = await playMove(board, player, row, col)
         if (result === 0) {
             break
         }
+
+        console.log("move played")
 
         game.switchPlayer()
         board.checkStatus()
