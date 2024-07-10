@@ -29,11 +29,13 @@ const ALGO = Object.freeze({
     ABMINIMAX: 1,
 })
 class Player {
-    constructor(name, color, cellValue, aiEnabled, aiAlgo, aiDepth) {
+    constructor(name, color, cellValue, aiEnabled, aiAlgo, aiDepth, type) {
         this.color = color
         this.cellValue = cellValue
         this.depth = 6
         this.wins = 0;
+        this.type = "OFFLINE"
+
         name = name.trim()
         if (name.length > 10 || name.length < 4 || name === "name?") {
             console.log("Can't you use shorter & better name?")
@@ -47,6 +49,10 @@ class Player {
         }
         else {
             this.ai = { enabled: false, algo: null, depth: null }
+        }
+
+        if(type){
+            this.type = type
         }
     }
 

@@ -5,11 +5,74 @@ import { online } from "./online.js"
 const defaultColor = "rgb(128,128,128)"  //gray
 const playColors = ["rgb(36, 238, 181)", "rgb(211, 36, 238)"]
 
+
+const playModes = [
+    "Mutliplayer (online)",
+    "Single Player (vs AI)",
+    "Two Player (local)",
+    "Dumb AI vs AI"
+]
+
+let prevMsg = { text: "", color: "red" }
+let msgQueue = [{ text: "", color: "red" }]
+const maxMsgQueueLen = 7
+
 /* flags */
 let game_started = false;
+let selectedPlayMode = 0;
+let playModeLock = false;
+
+let moveLastToQueue = false;
 
 /* options */
-let multiplayer = true;
+let multiplayer = false;
+
+
+/* get opponent msg from server */
+
+function requestMsgUpdate() {
+    let intervalId = setInterval(async () => {
+        let data = await online.getMsg()
+        if (data && data.text) {
+            addToQueue({ text: `# ${data.text}`, color: 'pink' })
+        }
+    }, 5000)
+}
+
+
+function showMsg(text, color, moveLastToQueue = true) {
+    if (moveLastToQueue && prevMsg.text !== msgQueue[msgQueue.length - 1].text && text !== msgQueue[msgQueue.length - 1].text) {
+        addToQueue(prevMsg)
+    }
+
+    prevMsg = { text: text, color: color }
+    $('#inbox0').text(`> ${text}`)
+    $('#inbox0').css('color', color)
+}
+
+async function displayPlayerCount() {
+    let playerCount = await online.getCountOfOnlineplayers()
+    if (playerCount && playerCount.total) {
+        $('#displayCount').text(playerCount.total)
+        $('#displayCount').css('color', 'green')
+    }
+}
+
+function addToQueue(msg) {
+    let len = msgQueue.length
+    if (msg.text.length == 0)
+        return;
+    msgQueue.push(msg);
+
+    if (len > maxMsgQueueLen) {
+        msgQueue.shift()
+        console.log("i am tryin to remove")
+        $(`#oldMsgBox > p`)[0].remove()
+    }
+    let para = `<p id="msg${len}" style="color:${msg.color}"> : ${msg.text} </p>`
+    $('#oldMsgBox').append(para)
+}
+
 
 document.addEventListener('keydown', function(event) {
     if (event.ctrlKey && event.key === 'c') {
@@ -20,13 +83,13 @@ document.addEventListener('keydown', function(event) {
 
 document.addEventListener('DOMContentLoaded', () => {
     $('#startBtn').on('click', async function(event) {
+        playModeLock = true
+        $('#hotBtnModes').css({ "background": "red", "color": "white" })
 
-        if (multiplayer) {
-            // sent request to server
-            await online.registerPlayer()
-            await online.getArena()
 
-        }
+
+
+
         $('#configure-btn').val("Restart")
         game_started = true;
         init()
@@ -39,19 +102,95 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         alert("New configurations in action!")
     })
+
+    $('#hotBtnL').on('click', () => {
+        if (!playModeLock) {
+            let N = playModes.length
+            selectedPlayMode = ((selectedPlayMode - 1) % N + N) % N
+            $('#hotBtnModes').text(playModes[selectedPlayMode])
+        }
+    })
+
+    $('#hotBtnR').on('click', () => {
+        if (!playModeLock) {
+            selectedPlayMode = (selectedPlayMode + 1) % playModes.length
+            $('#hotBtnModes').text(playModes[selectedPlayMode])
+        }
+    })
+
+    $('#msgTextBox').keypress((event) => {
+        let key = event.which
+        if (key === 13) {
+            let text = $('#msgTextBox').val()
+            console.log(text)
+            addToQueue({ text: text, color: 'goldenrod' })
+            // send to server
+            online.sendMsg(text)
+            $('#msgTextBox').val('')
+        }
+    })
+
+    $('#numcount-refresh-btn').on('click', displayPlayerCount)
 });
 
-function init() {
+async function init() {
 
     let p1aiflag = $('#p1ai').is(":checked")
     let p2aiflag = $('#p2ai').is(":checked")
     let p1depth = $('#p1d').value
     let p2depth = $('#p2d').value
 
-    const p1name = $('#p1name').text();
-    const p2name = $('#p2name').text();
-    const player1 = new Player(p1name, playColors[0], CELL.P1, p1aiflag, 1, 3)
-    const player2 = new Player(p2name, playColors[1], CELL.P2, p2aiflag, 1, 5)
+    let p1name = $('#p1name').text()
+    let p2name = $('#p2name').text()
+
+    let p1type = 'OFFLINE'
+    let p2type = 'OFFLINE'
+    // TODO: use enum type structure
+    if (selectedPlayMode === 0) {
+        let arena, pid
+        pid = await online.registerPlayer()
+        //TODO: Verify it gets back registration ID
+        // showMsg(`Player registered, PID: ${pid}`, 'yellow')
+        addToQueue({ text: `Player registered, PID: ${pid}`, color: 'yellow' })
+
+        // wait till, it gets arena
+        arena = await online.getArena()
+        if (arena.msg) {
+            showMsg(arena.msg, 'red')
+            showMsg("Restart!", 'red')
+            // TODO: remake match
+        } else {
+            showMsg(`Arena alloted with opponent: ${arena.opid}`, 'green')
+            requestMsgUpdate()
+        }
+        // TODO:
+        let canI = await online.canIPlayFirst()
+        // add error handle if undefined, no response!
+        console.log(canI)
+        
+        if (canI) {
+            showMsg("Your turn first, PLAY!", "green")
+            p1type = "ONLINE"
+        } else {
+            showMsg("Your opponent turn!", "organge")
+            p2type = "ONLINE"
+        }
+        p1aiflag = false;
+        p2aiflag = false;
+    } else if (selectedPlayMode === 1) {
+        p2aiflag = false
+        p1aiflag = true
+        p1name = "Dumb AI"
+    } else if (selectedPlayMode === 2) {
+        p1aiflag = false;
+        p2aiflag = false;
+    } else if (selectedPlayMode === 3) {
+        p1aiflag = true;
+        p2aiflag = true;
+    }
+
+    const player1 = new Player(p1name, playColors[0], CELL.P1, p1aiflag, 1, 3, p1type)
+    const player2 = new Player(p2name, playColors[1], CELL.P2, p2aiflag, 1, 5, p2type)
 
 
     const col = parseInt($('#ncol').text())
@@ -70,7 +209,7 @@ function start(game) {
     $('td').click((event) => {
         makePlayerMove(event.target, game);
     })
-    if (game.currentPlayer.ai.enabled) {
+    if (game.currentPlayer.ai.enabled || game.currentPlayer.type === 'ONLINE') {
         makePlayerMove(null, game);
     }
 }
@@ -184,20 +323,20 @@ async function makePlayerMove(target, game) {
         return
     }
 
-    // ({ row, col } = aiMove(board, player));
-    // console.log("ai move", row, col)
-    // }
-    // else if (player.type === 'online'){
-
-
     game.allowMove = false;
     while (board.status === STATUS.INPROGRESS) {
         const player = game.currentPlayer
         let row, col;
+
         if (player.ai.enabled) {
+
+            ({ row, col } = aiMove(board, player));
+            console.log("ai move", row, col)
+        }
+        else if (player.type === 'ONLINE') {
             let move
             /* TODO: find row, col  and may be set row to max for animation */
-            ({row, col} = await online.getUpdatedMove())  // should have to wait here
+            ({ row, col } = await online.getUpdatedMove())  // should have to wait here
             if (move) {
                 row = move.row
                 col = move.col
@@ -208,16 +347,16 @@ async function makePlayerMove(target, game) {
             const index = parseInt(target.id);
             ({ row, col } = board.getRowColFromIndex(index));
             // TODO: Send this move to server here
-            await online.sendMove(row, col)
+            if(selectedPlayMode === 0){
+                await online.sendMove(row, col)
+            }
         }
 
-        console.log("Playe move")
         const result = await playMove(board, player, row, col)
         if (result === 0) {
+            console.log("does it breaks hereee")
             break
         }
-
-        console.log("move played")
 
         game.switchPlayer()
         board.checkStatus()
@@ -227,7 +366,7 @@ async function makePlayerMove(target, game) {
         }
         updateGameUi(game)
 
-        if (!game.currentPlayer.ai.enabled) {
+        if (!game.currentPlayer.ai.enabled && !(game.currentPlayer.type === 'ONLINE')) {
             break
         }
     }
@@ -242,3 +381,5 @@ function makeAiMove(game) {
 function handleCellClick(game) {
 
 }
+
+displayPlayerCount()

@@ -4,8 +4,20 @@ body{
 }
 
 .nav-bar {
-    display: flex;
+    display: block;
     justify-content: space-around;
+}
+
+#total-online-players {
+    position: absolute;
+    right: 1%;
+    color: white;
+}
+
+#numcount-refresh-btn {
+    background-color: black;
+    font-size: 20px;
+    color: white;
 }
 
 .nav-bar:hover{
@@ -114,7 +126,6 @@ td{
 .clickable{
     text-decoration: none;
     color: black;
-    
 }
 
 #startBtn:hover{
@@ -150,3 +161,67 @@ code{
     height: 60px;
     width: 60px;
 }
+
+.hotBtn {
+    color: green;
+    background-color: black;
+    margin: 2px;
+    padding: 0px;
+    font-size: 20px;
+}
+
+#hotBtnModes{
+    width: 10em;
+    border: 5px double white;
+}
+
+.hotBtn:hover {
+    background-color: red;
+    color: white;
+}
+
+#hotBtn2, #hotBtn3, #hotBtn4 {
+    display: none;
+}
+
+.inbox {
+    color: white;
+    position: absolute;
+    font-size: 10px;
+    bottom:1%;
+}
+
+.hr-line {
+    position: absolute;
+    width: 26rem;
+    bottom: 1.7%;
+    color: white;
+}
+
+#oldMsgBox {
+    border: 1px dotted green;
+    color: white;
+    width: 26rem;
+    font-size: 10px;
+    bottom: 5.5%;
+    position: absolute;
+}
+
+#msgTextBox {
+    font-family: 'Press Start 2P';
+    color: goldenrod;
+    font-size: 13px;
+    bottom: 3%;
+    position: absolute;
+    background-color: black;
+    width: 26rem;
+    padding-left: 7px;
+    text-wrap: wrap;
+}
+
+/* #msgTextBox: focus { */
+/*     border: 1px red; */
+/* } */
+/* #msgTextBox: hover{ */
+/*     border: 1px red; */
+/* } */

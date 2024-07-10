@@ -13,11 +13,17 @@ const playerState = {
   DEAD: 'DEAD'
 }
 
+/* constants */
+const maxInboxLen = 10
+
 class Player {
   constructor() {
     this.pid = this._generatePID()
     this.opponent = null
-
+    this.playFirst = false
+    
+    // keeps messages send to player
+    this.inbox = []
     // not using
     this.name = null
     this.state = playerState.INQUEUE
@@ -28,7 +34,7 @@ class Player {
     /* if player doesn't interact with server for 60 secs, server will assume
      * player as dead (disconnected) 
      */
-    this.timer = 30  // 60secs
+    this.timer = 120  // 60secs
   }
 
   _generatePID() {
@@ -40,11 +46,21 @@ class Player {
   }
 
   resetTimer() {
-    this.timer = 30
+    this.timer = 120
   }
-  
-  setExpire(){
+
+  setExpire() {
     this.timer = -1
+  }
+
+  addToInbox(text) {
+    if (text.length <= 0)
+      return
+
+    if (this.inbox.length > maxInboxLen) {
+      this.inbox.pop();
+    }
+    this.inbox.push(text);
   }
 }
 
@@ -95,7 +111,7 @@ class PlayerPool {
 
 async function gogoReadPost(req) {
   if (req.method !== 'POST')
-    return { data: undefined, errorMsg: "invalid method" }
+    return { data: undefined, error: { status: 400, msg: "invalid method" } }
 
   let data = ''
   return await new Promise((resolve) => {
@@ -117,7 +133,7 @@ async function gogoReadPost(req) {
 // Assuming POST data in JSON
 async function gogoReadPostGetPID(req) {
   if (req.method !== 'POST')
-    return { data: undefined, errorMsg: "invalid method" }
+    return { data: undefined, error: { status: 400, msg: "invalid method" } }
 
   let data = ''
   return await new Promise((resolve, reject) => {
@@ -180,8 +196,34 @@ async function gogohandler(req, res) {
 
     if (!error.msg) {
       res.statusCode = 200
-      res.end((JSON.stringify({ Ypid: pid, Opid: opid })))
+      res.end((JSON.stringify({ mpid: pid, opid: opid })))
     }
+  }else if(parsedUrl.pathname === '/canIPlayFirst' && req.method === 'POST'){
+    let pid
+    ({ pid, error } = await gogoReadPostGetPID(req))
+
+    if (pid !== undefined) {
+      let player = playerPool.getPlayerWithPID(pid)
+
+      if (player === undefined) {
+        error = { status: 400, msg: `PID ${pid} not registered` }
+      }
+      else if (!player.opponent) {
+        error = { status: 333, msg: 'Player got no opponent' }
+      }
+      else {
+        res.statusCode = 200
+        if(player.opponent.playFirst){
+          res.end(JSON.stringify({answer: 'NO'}));
+          player.playFirst = false;
+        }else{
+          player.playFirst = true;
+          player.opponent.playFirst = false;
+          res.end(JSON.stringify({answer: 'YES'}));
+        }
+      }
+    }
+  
   }
   else if (parsedUrl.pathname === '/addMove' && req.method === 'POST') {
     let player, data
@@ -216,6 +258,9 @@ async function gogohandler(req, res) {
       if (player === undefined) {
         error = { status: 400, msg: `PID ${data.pid} not registered` }
       }
+      else if (!player.opponent) {
+        error = { status: 333, msg: 'Player got no opponent' }
+      }
       else if (player.opponent.state === playerState.DEAD) {
         player.setExpire()
         error = { status: 400, msg: 'Opponent disconnected' }
@@ -223,7 +268,7 @@ async function gogohandler(req, res) {
       else if (player.socket) {
         player.resetTimer()
         res.statusCode = 200
-        res.end(JSON.stringify(player.socket))
+        res.end(JSON.stringify({ move: player.socket, text: player.textMsg }))
         player.socket = null
       } else {
         player.resetTimer()
@@ -248,11 +293,63 @@ async function gogohandler(req, res) {
       }
     }
   }
+  else if (parsedUrl.pathname === '/sendMsg' && req.method === 'POST') {
+    let data
+    ({ data, error } = await gogoReadPost(req))
+
+    if (!error.msg && data.pid !== undefined) {
+      let player = playerPool.getPlayerWithPID(data.pid)
+
+      if (player === undefined) {
+        error = { status: 400, msg: `PID ${data.pid} not registered` }
+      }
+      else if (!player.opponent) {
+        error = { status: 333, msg: 'Player got no opponent' }
+      }
+      else if (data.text) {
+        // I will overwrite even if any pending msg to recieve by opponent
+        player.opponent.addToInbox(data.text);
+        res.statusCode = 200
+        res.end()
+      }
+    }
+  }
+  else if (parsedUrl.pathname === '/getMsg' && req.method === 'POST') {
+    let pid
+    ({ pid, error } = await gogoReadPostGetPID(req))
+    if (pid) {
+      let player = playerPool.getPlayerWithPID(pid)
+      if (player === undefined) {
+        error = { status: 400, msg: `PID ${pid} not registered` }
+      }
+      else if (!player.opponent) {
+        error = { status: 333, msg: 'Player got no opponent' }
+      }
+      else if (player.inbox.length > 0) {
+        // I will overwrite even if any pending msg to recieve by opponent
+        let write = '', len;
+        len = player.inbox.length;
+        res.statusCode = 200
+
+        while (len > 1) {
+          write += player.inbox.pop() + '<br>: # '
+          len--
+        }
+
+        write += player.inbox.pop();
+        res.end(JSON.stringify({ text: write }))
+      }else{
+        error = {status: 333, msg: 'No messages in Inbox'}
+      }
+
+    }
+  }
+
   else if (req.method === 'GET') {
     // requestin our main page, server static content
     gogoServeStatic(parsedUrl.pathname, res)
   }
-
+  console.log(error)
   if (error.msg) {
     console.log(error)
     res.statusCode = error.status || 404
