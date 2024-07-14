@@ -2,7 +2,8 @@
 
 A classic Connect Four board game with multiple playing modes, implemented using JavaScript.
 
-[click here](http://curous.live:3000/)
+[Online Version:](http://curous.live:3000/) {transient}
+[Static Version:](https://peonix0.github.io/connect4/public/) {persistence}
 
 ## Features
 
