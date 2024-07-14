@@ -332,7 +332,7 @@ async function gogohandler(req, res) {
         res.statusCode = 200
 
         while (len > 1) {
-          write += player.inbox.pop() + '<br>: # '
+          write = player.inbox.pop() + '<br>: # ' + write
           len--
         }
 

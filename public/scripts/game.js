@@ -119,6 +119,8 @@ class Game {
         this.player1 = player1
         this.player2 = player2
 
+        this.winner = null
+
         /* TODO: Select random Player to Start with */
         this.currentPlayer = this.player2
         this.allowMove = true
@@ -139,9 +141,11 @@ class Game {
         if (this.board.status === STATUS.FINISHED) {
             if (this.board.winner === CELL.P1) {
                 this.player1.wins++;
+                this.winner = this.player1;
             }
             else if (this.board.winner === CELL.P2) {
                 this.player2.wins++;
+                this.winner = this.player2;
             }
             else {
                 this.board.draw = true;

@@ -2,6 +2,8 @@
 
 A classic Connect Four board game with multiple playing modes, implemented using JavaScript.
 
+[click here](http://curous.live:3000/)
+
 ## Features
 
 - **Interactive Gameplay**: Play against the computer, a friend in two-player mode, or watch AI vs AI.
@@ -52,4 +54,5 @@ A classic Connect Four board game with multiple playing modes, implemented using
 
 ## Preview
 The Connect4 game interface showcasing the board, multiplayer mode, and chat feature.
+
 ![The Connect4 game interface showcasing the board, multiplayer mode, and chat feature](./connect4.png)

@@ -163,18 +163,6 @@ async function init() {
             showMsg(`Arena alloted with opponent: ${arena.opid}`, 'green')
             requestMsgUpdate()
         }
-        // TODO:
-        let canI = await online.canIPlayFirst()
-        // add error handle if undefined, no response!
-        console.log(canI)
-        
-        if (canI) {
-            showMsg("Your turn first, PLAY!", "green")
-            p1type = "ONLINE"
-        } else {
-            showMsg("Your opponent turn!", "organge")
-            p2type = "ONLINE"
-        }
         p1aiflag = false;
         p2aiflag = false;
     } else if (selectedPlayMode === 1) {
@@ -202,14 +190,30 @@ async function init() {
     start(game)
 }
 
-function start(game) {
-    displayResultUi(game)
+async function start(game) {
+    playModeLock = false
+    displayResultUi(game);
     updateBoardUi(game.board)
 
+    if (selectedPlayMode === 0) {
+        let canI = await online.canIPlayFirst()
+        // add error handle if undefined, no response!
+        console.log(canI)
+        if (canI) {
+            showMsg("Your turn first, START!", "green")
+            game.player1.type = "ONLINE"
+            game.player2.type = "OFFLINE"
+        } else {
+            showMsg("Your opponent turn, FIRST!", "organge")
+            game.player2.type = "ONLINE"
+            game.player1.type = "OFFLINE"
+            makePlayerMove(null, game)
+        }
+    }
     $('td').click((event) => {
         makePlayerMove(event.target, game);
     })
-    if (game.currentPlayer.ai.enabled || game.currentPlayer.type === 'ONLINE') {
+    if (game.currentPlayer.ai.enabled) {
         makePlayerMove(null, game);
     }
 }
@@ -253,10 +257,12 @@ function displayResultUi(game) {
         if (game.board.draw) {
             alert("game draw!")
         } else {
-            alert("we have a winner!")
+            let news = `${game.winner.name} is winner`
+            showMsg(news, 'red')
+            alert(news)
         }
         /* put a new game */
-        restart(game);
+        restart(game)
 
         /* TODO: add a announcement corner */
         $('#result').css('visibility', 'visible')
@@ -347,7 +353,7 @@ async function makePlayerMove(target, game) {
             const index = parseInt(target.id);
             ({ row, col } = board.getRowColFromIndex(index));
             // TODO: Send this move to server here
-            if(selectedPlayMode === 0){
+            if (selectedPlayMode === 0) {
                 await online.sendMove(row, col)
             }
         }
